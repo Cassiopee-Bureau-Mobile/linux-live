@@ -52,4 +52,5 @@ cat "$BOOT/../../EFI/Boot/syslinux.cfg" | sed -r "s:/boot/::" > "$BOOT/../../EFI
 cp "bootlogo.png" "initrfs.img" "vmlinuz" "$BOOT/../../EFI/boot/"
 
 echo "Boot installation finished."
+echo "Please copy the EFI folder at the root of your Fat32 partition."
 cd "$CWD"
