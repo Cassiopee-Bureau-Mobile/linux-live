@@ -44,5 +44,12 @@ fi
 mkdir -p "$BOOT/../../EFI"
 mv "EFI/Boot" "$BOOT/../../EFI/"
 
+
+# change syslinux.cfg to point to the right place
+cat "$BOOT/../../EFI/Boot/syslinux.cfg" | sed -r "s:/boot/::" > "$BOOT/../../EFI/Boot/syslinux.cfg"
+
+# copy the right files
+cp "bootlogo.png" "initrfs.img" "vmlinuz" "$BOOT/../../EFI/boot/"
+
 echo "Boot installation finished."
 cd "$CWD"
