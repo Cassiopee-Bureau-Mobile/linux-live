@@ -44,5 +44,14 @@ fi
 mkdir -p "$BOOT/../../EFI"
 mv "EFI/Boot" "$BOOT/../../EFI/"
 
+# get $LIVEKITNAME
+LIVEKITNAME="$(basename $(dirname $(pwd)))"
+# change syslinux.cfg to point to the right place
+sed -r "s:/$LIVEKITNAME/boot/::" "$BOOT/../../EFI/Boot/syslinux.cfg" > "$BOOT/../../EFI/Boot/syslinux.cfg.tmp" && mv "$BOOT/../../EFI/Boot/syslinux.cfg.tmp" "$BOOT/../../EFI/Boot/syslinux.cfg"
+
+# copy the right files
+cp "bootlogo.png" "initrfs.img" "vmlinuz" "$BOOT/../../EFI/Boot/"
+
 echo "Boot installation finished."
+echo "Please copy the EFI folder at the root of your Fat32 partition."
 cd "$CWD"
