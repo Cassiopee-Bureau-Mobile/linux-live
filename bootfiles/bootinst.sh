@@ -2,6 +2,8 @@
 # Setup booting from disk (USB or harddrive)
 # Requires: fdisk, df, tail, tr, cut, dd, sed
 
+export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
+
 # change working directory to dir from which we are started
 CWD="$(pwd)"
 BOOT="$(dirname "$0")"
