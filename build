@@ -14,6 +14,9 @@ CWD="$(pwd)"
 # only root can continue, because only root can read all files from your system
 allow_only_root
 
+# copy unlockStorage script
+cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
+
 # check for mksquashfs with xz compression
 if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
