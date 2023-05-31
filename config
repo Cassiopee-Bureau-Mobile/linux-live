@@ -14,6 +14,8 @@
 # and you're done.
 LIVEKITNAME="linux"
 
+HOME_SIZE="5000" # in MB (-100MB)
+
 # Kernel file, will be copied to your Live Kit
 # Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
 # out of the box.
@@ -27,7 +29,7 @@ KERNEL=$(uname -r)
 # No subdirectories are allowed, no slashes,
 # so You can't use /var/tmp here for example
 # Exclude directories like proc sys tmp
-MKMOD="bin etc home lib lib64 opt root sbin srv usr var"
+MKMOD="bin etc lib lib64 opt root sbin srv usr var"
 
 # If you require network support in initrd, for example to boot over
 # PXE or to load data using 'from' boot parameter from a http server,

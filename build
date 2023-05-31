@@ -14,9 +14,47 @@ CWD="$(pwd)"
 # only root can continue, because only root can read all files from your system
 allow_only_root
 
-# copy unlockStorage script
-cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
+# get USB device name
+if [ "$1" = "" ]; then
+   echo "Usage: $0 <device>"
+   echo "Example: $0 /dev/sdb"
+   exit 1
+fi
+USBDEV="$1"
 
+# check if USB device exists
+if [ ! -b "$USBDEV" ]; then
+   echo "Device $USBDEV not found, aborting"
+   exit 1
+fi
+
+# Configure the tabs
+#
+#
+# copy unlockStorage script
+#cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
+
+# on edite les crontab pour le root
+CMD_CRONTAB_0="@reboot mkdir /home"
+CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home"
+CMD_CRONTAB_2="@reboot chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
+crontab -l -u root > /a/temp_cron
+cp /a/temp_cron /a/temp_cron.bak
+echo -e "$CMD_CRONTAB_1" >> /a/temp_cron
+echo -e "$CMD_CRONTAB_2" >> /a/temp_cron
+crontab -u root /a/temp_cron
+
+# on edite le cryptab
+USB_UUID=$(ls -l /dev/disk/by-uuid/ | grep $( echo ${USBDEV}2 | sed 's/\/dev\///' ) | awk '{print $9}')
+CMD_CRYPTAB_1="encrypted UUID=$USB_UUID none"
+cp /etc/crypttab /a/temp_cryptab.bak
+echo -e "$CMD_CRYPTAB_1" >> /etc/crypttab
+
+
+
+# Build live kit
+#
+#
 # check for mksquashfs with xz compression
 if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
@@ -92,7 +130,88 @@ echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
 chmod o+x $TARGET/gen_"$LIVEKITNAME"_zip.sh
 
 echo "-----------------------------"
-echo "Finished. Find your result in $LIVEKITDATA"
-echo "To build ISO, run: $TARGET/gen_"$LIVEKITNAME"_iso.sh"
-echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
+echo "Finished. All data are in $LIVEKITDATA"
+#echo "To build ISO, run: $TARGET/gen_"$LIVEKITNAME"_iso.sh"
+#echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
 cd $CWD
+
+# reset the tabs configurations
+crontab -u root /a/temp_cron.bak
+rm /a/temp_cron
+
+# reset the cryptab
+cp /a/temp_cryptab.bak /etc/crypttab 
+
+
+# create USB device and export build
+# 
+#
+# format USB device
+echo "-----------------------------"
+echo "Formatting $USBDEV..."
+
+if [ $(findmnt -l | grep $USBDEV) != "" ]; then
+   echo "Umouting all partitons for $USBDEV..."
+   umount $USBDEV*
+fi
+
+# Supprimer toutes les partitions existantes sur la clé USB
+echo "Suppression des partitions existantes..."
+sudo parted $USBDEV mklabel gpt
+
+# Créer la deuxième partition de taille (HOME_SIZE) en ext4
+echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
+sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB $(echo $HOME_SIZE)MiB
+
+# Créer la troisième partition pour l'espace restant en ext4
+echo "Création de la troisième partition en ext4..."
+sudo parted -a optimal $USBDEV mkpart primary ext4 $HOME_SIZE 100%
+
+# Mettre à jour la table de partitions
+sudo partprobe $USBDEV
+
+# Formater les partitions
+echo "Formatage de la première partition en FAT32..."
+sudo mkfs.fat -F32 ${USBDEV}1
+
+echo "Formatage de la deuxième partition en ext4..."
+sudo mkfs.ext4 ${USBDEV}2
+
+echo "Formatage de la troisième partition en ext4..."
+sudo mkfs.ext4 ${USBDEV}3
+
+echo "Terminé !"
+echo "-----------------------------"
+
+# create Luks partition
+echo "Création de la partition chiffrée..."
+cryptsetup luksFormat ${USBDEV}2
+cryptsetup open ${USBDEV}2 encrypted2
+mkfs.ext4 /dev/mapper/encrypted2
+mkdir /mnt/encrypted2
+mount -t ext4 /dev/mapper/encrypted2 /mnt/encrypted2
+
+# copy home directory to the encrypted partition
+echo "Copie du répertoire home vers la partition chiffrée..."
+cp -r /home/$SUDO_USER /mnt/encrypted2
+
+# copy live kit to the USB device
+echo "Copying live kit to ${USBDEV}3..."
+mkdir /mnt/sys_files
+mount ${USBDEV}3 /mnt/sys_files
+cp -r $LIVEKITDATA/$LIVEKITNAME /mnt/sys_files
+
+# build the bootfiles in the USB device
+mkdir /mnt/boot
+mount ${USBDEV}1 /mnt/boot
+cd /mnt/sys_files/$LIVEKITNAME/bootfiles
+./bootinst.sh
+
+# copy the bootfiles to the USB boot partition
+cp -r /mnt/sys_files/EFI /mnt/boot
+
+echo "Terminé !"
+echo "-----------------------------"
+echo ""
+echo "Le système est prêt à être utilisé."
+echo "Ejectez la clé USB et démarrez votre ordinateur dessus."
