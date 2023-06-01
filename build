@@ -1,5 +1,5 @@
 #!/bin/bash
-# Linux Live Kit version 7
+# Linux Live Kit version 7 - Automated By Clément Safon (Cassiopee-Bureau-Mobile) - jun 2023
 
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
@@ -22,18 +22,88 @@ if [ "$1" = "" ]; then
 fi
 USBDEV="$1"
 
+# Check the requirements
+#
+# check for mksquashfs with xz compression
+if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
+   echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
+   echo "you may consider installing squashfs-tools package"
+   exit 1
+fi
 # check if USB device exists
 if [ ! -b "$USBDEV" ]; then
    echo "Device $USBDEV not found, aborting"
    exit 1
 fi
+# check if cryptsetup is installed
+if [ "$(which cryptsetup)" = "" ]; then
+   echo "cryptsetup not found, aborting, no changes made"
+   echo "you may consider installing cryptsetup package"
+   exit 1
+fi
+# check if mkfsofs is installed
+MKISOFS=$(which mkisofs)
+if [ "$MKISOFS" = "" ]; then
+   MKISOFS=$(which genisoimage)
+fi
+if [ "$MKISOFS" = "" ]; then
+   echo "Cannot find mkisofs or genisoimage, stop"
+   exit 3
+fi
+
+# Prepare the USB device to update the tabs
+#
+# format USB device
+echo "-----------------------------"
+echo "Formatting $USBDEV..."
+
+if [ $(findmnt -l | grep $USBDEV) != "" ]; then
+   echo "Umouting all partitons for $USBDEV..."
+   umount $USBDEV*
+fi
+
+# Supprimer toutes les partitions existantes sur la clé USB
+echo "Suppression des partitions existantes..."
+sudo parted $USBDEV mklabel gpt
+
+# Créer la deuxième partition de taille (HOME_SIZE) en ext4
+echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
+sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB $(echo $HOME_SIZE)MiB
+
+# Créer la troisième partition pour l'espace restant en ext4
+echo "Création de la troisième partition en ext4..."
+sudo parted -a optimal $USBDEV mkpart primary ext4 $HOME_SIZE 100%
+
+# Mettre à jour la table de partitions
+sudo partprobe $USBDEV
+
+# Formater les partitions
+echo "Formatage de la première partition en FAT32..."
+sudo mkfs.fat -F32 ${USBDEV}1
+
+echo "Formatage de la deuxième partition en ext4..."
+sudo mkfs.ext4 ${USBDEV}2
+
+echo "Formatage de la troisième partition en ext4..."
+sudo mkfs.ext4 ${USBDEV}3
+
+echo "Terminé !"
+echo "-----------------------------"
+
+# create Luks partition
+echo "Création de la partition chiffrée..."
+cryptsetup luksFormat ${USBDEV}2
+cryptsetup open ${USBDEV}2 encrypted2
+mkfs.ext4 /dev/mapper/encrypted2
+mkdir /mnt/encrypted2
+mount -t ext4 /dev/mapper/encrypted2 /mnt/encrypted2
 
 # Configure the tabs
 #
-#
+# Unused :
 # copy unlockStorage script
-#cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
-
+# cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
+#
 # on edite les crontab pour le root
 CMD_CRONTAB_0="@reboot mkdir /home"
 CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home"
@@ -55,22 +125,6 @@ echo -e "$CMD_CRYPTAB_1" >> /etc/crypttab
 # Build live kit
 #
 #
-# check for mksquashfs with xz compression
-if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
-   echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
-   echo "you may consider installing squashfs-tools package"
-   exit 1
-fi
-
-MKISOFS=$(which mkisofs)
-if [ "$MKISOFS" = "" ]; then
-   MKISOFS=$(which genisoimage)
-fi
-if [ "$MKISOFS" = "" ]; then
-   echo "Cannot find mkisofs or genisoimage, stop"
-   exit 3
-fi
-
 # build initramfs image
 if [ "$SKIPINITRFS" = "" ]; then
    echo "Building initramfs image..."
@@ -135,62 +189,17 @@ echo "Finished. All data are in $LIVEKITDATA"
 #echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
 cd $CWD
 
+
 # reset the tabs configurations
 crontab -u root /a/temp_cron.bak
 rm /a/temp_cron
-
 # reset the cryptab
 cp /a/temp_cryptab.bak /etc/crypttab 
 
 
-# create USB device and export build
+# Export build and install bootfiles
 # 
 #
-# format USB device
-echo "-----------------------------"
-echo "Formatting $USBDEV..."
-
-if [ $(findmnt -l | grep $USBDEV) != "" ]; then
-   echo "Umouting all partitons for $USBDEV..."
-   umount $USBDEV*
-fi
-
-# Supprimer toutes les partitions existantes sur la clé USB
-echo "Suppression des partitions existantes..."
-sudo parted $USBDEV mklabel gpt
-
-# Créer la deuxième partition de taille (HOME_SIZE) en ext4
-echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
-sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB $(echo $HOME_SIZE)MiB
-
-# Créer la troisième partition pour l'espace restant en ext4
-echo "Création de la troisième partition en ext4..."
-sudo parted -a optimal $USBDEV mkpart primary ext4 $HOME_SIZE 100%
-
-# Mettre à jour la table de partitions
-sudo partprobe $USBDEV
-
-# Formater les partitions
-echo "Formatage de la première partition en FAT32..."
-sudo mkfs.fat -F32 ${USBDEV}1
-
-echo "Formatage de la deuxième partition en ext4..."
-sudo mkfs.ext4 ${USBDEV}2
-
-echo "Formatage de la troisième partition en ext4..."
-sudo mkfs.ext4 ${USBDEV}3
-
-echo "Terminé !"
-echo "-----------------------------"
-
-# create Luks partition
-echo "Création de la partition chiffrée..."
-cryptsetup luksFormat ${USBDEV}2
-cryptsetup open ${USBDEV}2 encrypted2
-mkfs.ext4 /dev/mapper/encrypted2
-mkdir /mnt/encrypted2
-mount -t ext4 /dev/mapper/encrypted2 /mnt/encrypted2
-
 # copy home directory to the encrypted partition
 echo "Copie du répertoire home vers la partition chiffrée..."
 cp -r /home/$SUDO_USER /mnt/encrypted2
