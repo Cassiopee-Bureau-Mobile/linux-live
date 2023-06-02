@@ -57,7 +57,7 @@ fi
 echo "-----------------------------"
 echo "Formatting $USBDEV..."
 
-if [ $(findmnt -l | grep $USBDEV) != "" ]; then
+if [ "$(findmnt -l | grep $USBDEV)" != "" ]; then
    echo "Umouting all partitons for $USBDEV..."
    umount $USBDEV*
 fi
@@ -68,11 +68,11 @@ sudo parted $USBDEV mklabel gpt
 
 # Créer la deuxième partition de taille (HOME_SIZE) en ext4
 echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
-sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB $(echo $HOME_SIZE)MiB
+sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB ${HOME_SIZE}MiB
 
 # Créer la troisième partition pour l'espace restant en ext4
 echo "Création de la troisième partition en ext4..."
-sudo parted -a optimal $USBDEV mkpart primary ext4 $HOME_SIZE 100%
+sudo parted -a optimal $USBDEV mkpart primary ext4 ${HOME_SIZE}MiB 100%
 
 # Mettre à jour la table de partitions
 sudo partprobe $USBDEV
@@ -93,10 +93,10 @@ echo "-----------------------------"
 # create Luks partition
 echo "Création de la partition chiffrée..."
 cryptsetup luksFormat ${USBDEV}2
-cryptsetup open ${USBDEV}2 encrypted2
-mkfs.ext4 /dev/mapper/encrypted2
-mkdir /mnt/encrypted2
-mount -t ext4 /dev/mapper/encrypted2 /mnt/encrypted2
+cryptsetup open ${USBDEV}2 encrypted
+mkfs.ext4 /dev/mapper/encrypted
+mkdir /mnt/encrypted
+mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 
 # Configure the tabs
 #
@@ -117,7 +117,7 @@ crontab -u root /a/temp_cron
 # on edite le cryptab
 USB_UUID=$(ls -l /dev/disk/by-uuid/ | grep $( echo ${USBDEV}2 | sed 's/\/dev\///' ) | awk '{print $9}')
 CMD_CRYPTAB_1="encrypted UUID=$USB_UUID none"
-cp /etc/crypttab /a/temp_cryptab.bak
+cp /etc/crypttab /a/temp_crypttab.bak
 echo -e "$CMD_CRYPTAB_1" >> /etc/crypttab
 
 
@@ -189,20 +189,12 @@ echo "Finished. All data are in $LIVEKITDATA"
 #echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
 cd $CWD
 
-
-# reset the tabs configurations
-crontab -u root /a/temp_cron.bak
-rm /a/temp_cron
-# reset the cryptab
-cp /a/temp_cryptab.bak /etc/crypttab 
-
-
 # Export build and install bootfiles
 # 
 #
 # copy home directory to the encrypted partition
 echo "Copie du répertoire home vers la partition chiffrée..."
-cp -r /home/$SUDO_USER /mnt/encrypted2
+cp -r /home/$SUDO_USER /mnt/encrypted
 
 # copy live kit to the USB device
 echo "Copying live kit to ${USBDEV}3..."
@@ -218,6 +210,24 @@ cd /mnt/sys_files/$LIVEKITNAME/bootfiles
 
 # copy the bootfiles to the USB boot partition
 cp -r /mnt/sys_files/EFI /mnt/boot
+
+# Clean All
+#
+#
+# unmount all the partitions
+umount /mnt/boot
+umount /mnt/sys_files
+umount /mnt/encrypted
+rm -r /mnt/boot
+rm -r /mnt/sys_files
+rm -r /mnt/encrypted
+# reset the tabs configurations
+crontab -u root /a/temp_cron.bak
+rm /a/temp_cron
+rm /a/temp_cron.bak
+# reset the cryptab
+cp /a/temp_crypttab.bak /etc/crypttab 
+rm /a/temp_crypttab.bak
 
 echo "Terminé !"
 echo "-----------------------------"
