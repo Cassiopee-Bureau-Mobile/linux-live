@@ -95,11 +95,11 @@ sudo parted -a optimal $USBDEV mkpart primary fat32 0% 100MiB
 
 # Créer la deuxième partition de taille (HOME_SIZE) en ext4
 echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
-sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB ${HOME_SIZE}MiB
+sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB $((HOME_SIZE+100))MiB
 
 # Créer la troisième partition pour l'espace restant en ext4
 echo "Création de la troisième partition en ext4..."
-sudo parted -a optimal $USBDEV mkpart primary ext4 ${HOME_SIZE}MiB 100%
+sudo parted -a optimal $USBDEV mkpart primary ext4 $((HOME_SIZE+100))MiB 100%
 
 # Mettre à jour la table de partitions
 sudo partprobe $USBDEV
@@ -135,7 +135,6 @@ mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 # cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
 #
 # on edite les crontab pour le root
-CMD_CRONTAB_0="@reboot mkdir /home"
 CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home"
 CMD_CRONTAB_2="@reboot chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
 crontab -l -u root > /a/temp_cron
