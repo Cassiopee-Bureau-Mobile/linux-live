@@ -66,6 +66,10 @@ fi
 echo "Suppression des partitions existantes..."
 sudo parted $USBDEV mklabel gpt
 
+# Créer la première partition de taille (100MiB) en fat32
+echo "Création de la première partition (100MiB) en fat32..."
+sudo parted -a optimal $USBDEV mkpart primary fat32 0% 100MiB
+
 # Créer la deuxième partition de taille (HOME_SIZE) en ext4
 echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
 sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB ${HOME_SIZE}MiB
@@ -147,7 +151,7 @@ fi
 # BIOS / MBR booting
 cp -r bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
-cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
+# cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp $VMLINUZ $BOOT/ || exit
 
 # UEFI booting
@@ -203,18 +207,21 @@ mount ${USBDEV}3 /mnt/sys_files
 cp -r $LIVEKITDATA/$LIVEKITNAME /mnt/sys_files
 
 # build the bootfiles in the USB device
+echo "Building bootfiles in ${USBDEV}1..."
 mkdir /mnt/boot
 mount ${USBDEV}1 /mnt/boot
-cd /mnt/sys_files/$LIVEKITNAME/bootfiles
+cd /mnt/sys_files/$LIVEKITNAME/boot
 ./bootinst.sh
 
 # copy the bootfiles to the USB boot partition
+echo "Copying bootfiles to ${USBDEV}1..."
 cp -r /mnt/sys_files/EFI /mnt/boot
 
 # Clean All
 #
 #
 # unmount all the partitions
+echo "Cleaning..."
 umount /mnt/boot
 umount /mnt/sys_files
 umount /mnt/encrypted
