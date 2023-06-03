@@ -8,8 +8,8 @@ echo "Changing current directory to $CHANGEDIR"
 cd $CHANGEDIR
 CWD="$(pwd)"
 
-. ./config || exit 1
-. ./livekitlib || exit 1
+. ../config || exit 1
+. ../livekitlib || exit 1
 
 # only root can continue, because only root can read all files from your system
 allow_only_root
@@ -122,7 +122,10 @@ echo "Création de la partition chiffrée..."
 cryptsetup luksFormat ${USBDEV}2
 cryptsetup open ${USBDEV}2 encrypted
 mkfs.ext4 /dev/mapper/encrypted
-mkdir /mnt/encrypted
+# check if the directory exists
+if [ ! -d "/mnt/encrypted" ]; then
+   mkdir /mnt/encrypted
+fi
 mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 
 # Configure the tabs
@@ -157,13 +160,19 @@ cp -r /home/$SUDO_USER /mnt/encrypted
 
 # copy live kit to the USB device
 echo "Copying live kit to ${USBDEV}3..."
-mkdir /mnt/sys_files
+# check if the directory exists
+if [ ! -d /mnt/sys_files ]; then
+   mkdir /mnt/sys_files
+fi
 mount ${USBDEV}3 /mnt/sys_files
 cp -r $LIVEKITDATA/$LIVEKITNAME /mnt/sys_files
 
 # build the bootfiles in the USB device
 echo "Building bootfiles in ${USBDEV}1..."
-mkdir /mnt/boot
+# check if the directory exists
+if [ ! -d /mnt/boot ]; then
+   mkdir /mnt/boot
+fi
 mount ${USBDEV}1 /mnt/boot
 cd /mnt/sys_files/$LIVEKITNAME/boot
 ./bootinst.sh
@@ -177,12 +186,20 @@ cp -r /mnt/sys_files/EFI /mnt/boot
 #
 # unmount all the partitions
 echo "Cleaning..."
-umount /mnt/boot
-umount /mnt/sys_files
-umount /mnt/encrypted
-rm -r /mnt/boot
-rm -r /mnt/sys_files
-rm -r /mnt/encrypted
+while [ $? -ne 0 ]; do
+   sleep 1
+   umount /mnt/boot && rm -r /mnt/boot
+done
+while [ $? -ne 0 ]; do
+   sleep 1
+   umount /mnt/sys_files && rm -r /mnt/sys_files
+done
+while [ $? -ne 0 ]; do
+   sleep 1
+   umount /mnt/encrypted && rm -r /mnt/encrypted
+done
+# close cryptsetup encrypted partition
+cryptsetup close encrypted
 # reset the tabs configurations
 crontab -u root /a/temp_cron.bak
 rm /a/temp_cron
