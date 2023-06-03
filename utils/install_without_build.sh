@@ -3,15 +3,10 @@
 
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
-CHANGEDIR=$(dirname $(readlink -f $0))
-echo "Changing current directory to $CHANGEDIR"
-cd $CHANGEDIR
-CWD="$(pwd)"
-
 . ../config || exit 1
 . ../livekitlib || exit 1
 
-# only root can continue, because only root can read all files from your system
+# only root can continue
 allow_only_root
 
 # get USB device name in $1
@@ -47,31 +42,11 @@ fi
 
 # Check the requirements
 #
-# check for mksquashfs with xz compression
-if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
-   echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
-   echo "you may consider installing squashfs-tools package"
-   exit 1
-fi
-# check if USB device exists
-if [ ! -b "$USBDEV" ]; then
-   echo "Device $USBDEV not found, aborting"
-   exit 1
-fi
 # check if cryptsetup is installed
 if [ "$(which cryptsetup)" = "" ]; then
    echo "cryptsetup not found, aborting, no changes made"
    echo "you may consider installing cryptsetup package"
    exit 1
-fi
-# check if mkfsofs is installed
-MKISOFS=$(which mkisofs)
-if [ "$MKISOFS" = "" ]; then
-   MKISOFS=$(which genisoimage)
-fi
-if [ "$MKISOFS" = "" ]; then
-   echo "Cannot find mkisofs or genisoimage, stop"
-   exit 3
 fi
 
 # Prepare the USB device to update the tabs
@@ -85,26 +60,26 @@ if [ "$(findmnt -l | grep $USBDEV)" != "" ]; then
    umount $USBDEV*
 fi
 
-# Supprimer toutes les partitions existantes sur la clé USB
+# erase all partitions 
 echo "Suppression des partitions existantes..."
 sudo parted $USBDEV mklabel gpt
 
-# Créer la première partition de taille (100MiB) en fat32
+# create boot partition (FAT32-100MiB)
 echo "Création de la première partition (100MiB) en fat32..."
 sudo parted -a optimal $USBDEV mkpart primary fat32 0% 100MiB
 
-# Créer la deuxième partition de taille (HOME_SIZE) en ext4
+# create home partition (ext4-HOME_SIZEMiB)
 echo "Création de la deuxième partition ($HOME_SIZE) en ext4..."
 sudo parted -a optimal $USBDEV mkpart primary ext4 100MiB $((HOME_SIZE+100))MiB
 
-# Créer la troisième partition pour l'espace restant en ext4
+# create system files partition (ext4-100%)
 echo "Création de la troisième partition en ext4..."
 sudo parted -a optimal $USBDEV mkpart primary ext4 $((HOME_SIZE+100))MiB 100%
 
-# Mettre à jour la table de partitions
+# update the partition table
 sudo partprobe $USBDEV
 
-# Formater les partitions
+# format partitions
 echo "Formatage de la première partition en FAT32..."
 sudo mkfs.fat -F32 ${USBDEV}1
 
@@ -115,9 +90,9 @@ echo "Formatage de la troisième partition en ext4..."
 sudo mkfs.ext4 ${USBDEV}3
 
 echo "Terminé !"
-echo "-----------------------------"
+echo -e "-----------------------------\n\n"
 
-# create Luks partition
+# create Luks partition on the second partition
 echo "Création de la partition chiffrée..."
 cryptsetup luksFormat ${USBDEV}2
 cryptsetup open ${USBDEV}2 encrypted
@@ -134,7 +109,8 @@ mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 # copy unlockStorage script
 # cp $CWD/setup/unlockStorage.sh /etc/unlockStorage.sh
 #
-# on edite les crontab pour le root
+# rewrite crontab for root to mount the encrypted partition at boot
+echo "Configuration des crontab et crypttab..."
 CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home"
 CMD_CRONTAB_2="@reboot chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
 crontab -l -u root > /a/temp_cron
@@ -143,7 +119,7 @@ echo -e "$CMD_CRONTAB_1" >> /a/temp_cron
 echo -e "$CMD_CRONTAB_2" >> /a/temp_cron
 crontab -u root /a/temp_cron
 
-# on edite le cryptab
+# rewrite crypttab to unlock the encrypted partition at boot
 USB_UUID=$(ls -l /dev/disk/by-uuid/ | grep $( echo ${USBDEV}2 | sed 's/\/dev\///' ) | awk '{print $9}')
 CMD_CRYPTAB_1="encrypted UUID=$USB_UUID none"
 cp /etc/crypttab /a/temp_crypttab.bak
@@ -158,7 +134,7 @@ echo "Copie du répertoire home vers la partition chiffrée..."
 cp -r /home/$SUDO_USER /mnt/encrypted
 
 # copy live kit to the USB device
-echo "Copying live kit to ${USBDEV}3..."
+echo "Copie du live kit vers ${USBDEV}3..."
 # check if the directory exists
 if [ ! -d /mnt/sys_files ]; then
    mkdir /mnt/sys_files
@@ -167,7 +143,7 @@ mount ${USBDEV}3 /mnt/sys_files
 cp -r $LIVEKITDATA/$LIVEKITNAME /mnt/sys_files
 
 # build the bootfiles in the USB device
-echo "Building bootfiles in ${USBDEV}1..."
+echo "Construction des fichiers de boot dans ${USBDEV}1..."
 # check if the directory exists
 if [ ! -d /mnt/boot ]; then
    mkdir /mnt/boot
@@ -177,14 +153,14 @@ cd /mnt/sys_files/$LIVEKITNAME/boot
 ./bootinst.sh
 
 # copy the bootfiles to the USB boot partition
-echo "Copying bootfiles to ${USBDEV}1..."
+echo "Copie des fichiers de boot dans ${USBDEV}1..."
 cp -r /mnt/sys_files/EFI /mnt/boot
 
 # Clean All
 #
 #
 # unmount all the partitions
-echo "Cleaning..."
+echo "Nettoyage..."
 while [ $? -ne 0 ]; do
    sleep 1
    umount /mnt/boot && rm -r /mnt/boot
