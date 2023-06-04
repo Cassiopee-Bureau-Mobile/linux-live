@@ -240,6 +240,8 @@ cd $CHANGEDIR
 #
 #
 # unmount all the partitions
+sleep 5
+
 echo "Nettoyage..."
 while [ $? -ne 0 ]; do
    sleep 1

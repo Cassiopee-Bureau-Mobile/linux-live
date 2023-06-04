@@ -159,6 +159,8 @@ cp -r /mnt/sys_files/EFI /mnt/boot
 #
 #
 # unmount all the partitions
+sleep 5
+
 echo "Nettoyage..."
 while [ $? -ne 0 ]; do
    sleep 1
