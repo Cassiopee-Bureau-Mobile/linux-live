@@ -112,12 +112,10 @@ mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 #
 # rewrite crontab for root to mount the encrypted partition at boot
 echo "Configuration des crontab et crypttab..."
-CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home"
-CMD_CRONTAB_2="@reboot chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
+CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home && chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
 crontab -l -u root > /a/temp_cron
 cp /a/temp_cron /a/temp_cron.bak
-echo -e "$CMD_CRONTAB_1" >> /a/temp_cron
-echo -e "$CMD_CRONTAB_2" >> /a/temp_cron
+echo "$CMD_CRONTAB_1" >> /a/temp_cron
 crontab -u root /a/temp_cron
 
 # rewrite crypttab to unlock the encrypted partition at boot
