@@ -5,6 +5,7 @@ export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
 . ../config || exit 1
 . ../livekitlib || exit 1
+. ./clean.sh || exit 1
 
 # only root can continue
 allow_only_root
