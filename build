@@ -53,6 +53,13 @@ if [ "$MKISOFS" = "" ]; then
    exit 3
 fi
 
+# select the syslinux file base on $PERSISTENT
+if [ $PERSISTENT -e 0 ]; then
+   cp utils/syslinux_live.cfg bootfiles/syslinux.cfg
+else
+   cp utils/syslinux_persistent.cfg bootfiles/syslinux.cfg
+fi
+
 # Prepare the USB device to update the tabs
 #
 # format USB device
@@ -116,15 +123,15 @@ mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 # rewrite crontab for root to mount the encrypted partition at boot
 echo "Configuration des crontab et crypttab..."
 CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home && chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
-crontab -l -u root > /a/temp_cron
-cp /a/temp_cron /a/temp_cron.bak
-echo "$CMD_CRONTAB_1" >> /a/temp_cron
-crontab -u root /a/temp_cron
+crontab -l -u root > utils/temp_cron
+cp utils/temp_cron utils/temp_cron.bak
+echo "$CMD_CRONTAB_1" >> utils/temp_cron
+crontab -u root utils/temp_cron
 
 # rewrite crypttab to unlock the encrypted partition at boot
 USB_UUID=$(ls -l /dev/disk/by-uuid/ | grep $( echo ${USBDEV}2 | sed 's/\/dev\///' ) | awk '{print $9}')
 CMD_CRYPTAB_1="encrypted UUID=$USB_UUID none"
-cp /etc/crypttab /a/temp_crypttab.bak
+cp /etc/crypttab utils/temp_crypttab.bak
 echo -e "$CMD_CRYPTAB_1" >> /etc/crypttab
 
 
@@ -194,7 +201,7 @@ echo "-----------------------------"
 echo "Finished. All data are in $LIVEKITDATA"
 #echo "To build ISO, run: $TARGET/gen_"$LIVEKITNAME"_iso.sh"
 #echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
-cd $CWD
+cd $CHANGEDIR
 
 
 # Export build and install bootfiles
@@ -226,6 +233,8 @@ cd /mnt/sys_files/$LIVEKITNAME/boot
 # copy the bootfiles to the USB boot partition
 echo "Copie des fichiers de boot dans ${USBDEV}1..."
 cp -r /mnt/sys_files/EFI /mnt/boot
+cd $CHANGEDIR
+
 
 # Clean All
 #
@@ -247,12 +256,12 @@ done
 # close cryptsetup encrypted partition
 cryptsetup close encrypted
 # reset the tabs configurations
-crontab -u root /a/temp_cron.bak
-rm /a/temp_cron
-rm /a/temp_cron.bak
+crontab -u root utils/temp_cron.bak
+rm utils/temp_cron
+rm utils/temp_cron.bak
 # reset the cryptab
-cp /a/temp_crypttab.bak /etc/crypttab 
-rm /a/temp_crypttab.bak
+cp utils/temp_crypttab.bak /etc/crypttab 
+rm utils/temp_crypttab.bak
 
 echo "Terminé !"
 echo "-----------------------------"
