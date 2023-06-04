@@ -54,7 +54,7 @@ if [ "$MKISOFS" = "" ]; then
 fi
 
 # select the syslinux file base on $PERSISTENT
-if [ $PERSISTENT -e 0 ]; then
+if [ $PERSISTENT -eq "0" ]; then
    cp utils/syslinux_live.cfg bootfiles/syslinux.cfg
 else
    cp utils/syslinux_persistent.cfg bootfiles/syslinux.cfg

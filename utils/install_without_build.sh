@@ -50,6 +50,13 @@ if [ "$(which cryptsetup)" = "" ]; then
    exit 1
 fi
 
+# select the syslinux file base on $PERSISTENT
+if [ $PERSISTENT -eq "0" ]; then
+   cp utils/syslinux_live.cfg bootfiles/syslinux.cfg
+else
+   cp utils/syslinux_persistent.cfg bootfiles/syslinux.cfg
+fi
+
 # Prepare the USB device to update the tabs
 #
 # format USB device
