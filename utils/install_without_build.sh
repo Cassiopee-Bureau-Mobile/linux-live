@@ -3,20 +3,14 @@
 
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
-CHANGEDIR=$(dirname $(readlink -f $0))
-echo "Changing current directory to $CHANGEDIR"
-cd $CHANGEDIR
-CWD="$(pwd)"
-
-. ./config || exit 1
-. ./livekitlib || exit 1
+. ../config || exit 1
+. ../livekitlib || exit 1
+. ./clean.sh || exit 1
 
 # only root can continue
 allow_only_root
 
-# get parameters
-#
-# get USB device name
+# get USB device name in $1
 if [ "$1" = "" ]; then
    echo "Usage: $0 <device>"
    echo "Example: $0 /dev/sdb"
@@ -24,33 +18,36 @@ if [ "$1" = "" ]; then
 fi
 USBDEV="$1"
 
+# get LIVEKITDATA in $2
+if [ "$2" = "" ]; then
+   echo "Usage: $0 <device> <livekitdata>"
+   echo "Example: $0 /dev/sdb /tmp/linux-data-3599"
+   exit 1
+fi
+LIVEKITDATA="$2"
+
+# get LIVEKITNAME in $3
+if [ "$3" = "" ]; then
+   echo "Usage: $0 <device> <livekitdata> <livekitname>"
+   echo "Example: $0 /dev/sdb /tmp/linux-data-3599 linux"
+   exit 1
+fi
+LIVEKITNAME="$3"
+
+# check if $LIVEKITNAME folder exists
+if [ ! -d "$LIVEKITDATA/$LIVEKITNAME" ]; then
+   echo "Directory $LIVEKITDATA/$LIVEKITNAME not found, aborting"
+   exit 1
+fi
+
+
 # Check the requirements
 #
-# check for mksquashfs with xz compression
-if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
-   echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
-   echo "you may consider installing squashfs-tools package"
-   exit 1
-fi
-# check if USB device exists
-if [ ! -b "$USBDEV" ]; then
-   echo "Device $USBDEV not found, aborting"
-   exit 1
-fi
 # check if cryptsetup is installed
 if [ "$(which cryptsetup)" = "" ]; then
    echo "cryptsetup not found, aborting, no changes made"
    echo "you may consider installing cryptsetup package"
    exit 1
-fi
-# check if mkfsofs is installed
-MKISOFS=$(which mkisofs)
-if [ "$MKISOFS" = "" ]; then
-   MKISOFS=$(which genisoimage)
-fi
-if [ "$MKISOFS" = "" ]; then
-   echo "Cannot find mkisofs or genisoimage, stop"
-   exit 3
 fi
 
 # select the syslinux file base on $PERSISTENT
@@ -123,85 +120,16 @@ mount -t ext4 /dev/mapper/encrypted /mnt/encrypted
 # rewrite crontab for root to mount the encrypted partition at boot
 echo "Configuration des crontab et crypttab..."
 CMD_CRONTAB_1="@reboot mount /dev/mapper/encrypted /home && chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER"
-crontab -l -u root > utils/temp_cron
-cp utils/temp_cron utils/temp_cron.bak
-echo "$CMD_CRONTAB_1" >> utils/temp_cron
-crontab -u root utils/temp_cron
+crontab -l -u root > /a/temp_cron
+cp /a/temp_cron /a/temp_cron.bak
+echo "$CMD_CRONTAB_1" >> /a/temp_cron
+crontab -u root /a/temp_cron
 
 # rewrite crypttab to unlock the encrypted partition at boot
 USB_UUID=$(ls -l /dev/disk/by-uuid/ | grep $( echo ${USBDEV}2 | sed 's/\/dev\///' ) | awk '{print $9}')
 CMD_CRYPTAB_1="encrypted UUID=$USB_UUID none"
-cp /etc/crypttab utils/temp_crypttab.bak
+cp /etc/crypttab /a/temp_crypttab.bak
 echo -e "$CMD_CRYPTAB_1" >> /etc/crypttab
-
-
-
-# Build live kit
-#
-echo "Building live kit..."
-# build initramfs image
-if [ "$SKIPINITRFS" = "" ]; then
-   echo "Building initramfs image..."
-   cd initramfs
-   INITRAMFS=$(./initramfs_create)
-   cd ..
-fi
-
-# create live kit filesystem (cpio archive)
-rm -Rf "$LIVEKITDATA"
-BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
-mkdir -p "$BOOT"
-mkdir -p "$BOOT"/../changes
-mkdir -p "$BOOT"/../modules
-
-if [ "$INITRAMFS" != "" ]; then
-   mv "$INITRAMFS" $BOOT/initrfs.img
-fi
-
-# BIOS / MBR booting
-cp -r bootfiles/* $BOOT
-cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
-# cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
-cp $VMLINUZ $BOOT/ || exit
-
-# UEFI booting
-mkdir -p $BOOT/EFI/Boot
-cp bootfiles/EFI/Boot/syslinux.efi $BOOT/EFI/Boot/bootx64.efi
-cp bootfiles/EFI/Boot/{ldlinux.e64,menu.c32,libutil.c32,vesamenu.c32,libcom32.c32} $BOOT/EFI/Boot
-cat $BOOT/syslinux.cfg | sed -r "s:/$LIVEKITNAME/boot/vesamenu:vesamenu:" > $BOOT/EFI/Boot/syslinux.cfg
-
-# create compressed 01-core.sb
-COREFS=""
-for i in $MKMOD; do
-   if [ -d /$i ]; then
-      COREFS="$COREFS /$i"
-   fi
-done
-if [ "$SKIPCOREMOD" = "" ]; then
-   mksquashfs $COREFS $LIVEKITDATA/$LIVEKITNAME/01-core.$BEXT -comp xz -b 1024K -Xbcj x86 -always-use-fragments -keep-as-directory || exit
-fi
-
-cd "$LIVEKITDATA"
-ARCH=$(uname -m)
-TARGET=/tmp
-
-cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$/\x0D/" > readme.txt
-
-echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
--no-emul-boot -boot-info-table -boot-load-size 4 \
--b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
-> $TARGET/gen_"$LIVEKITNAME"_iso.sh
-chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
-
-echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
-> $TARGET/gen_"$LIVEKITNAME"_zip.sh
-chmod o+x $TARGET/gen_"$LIVEKITNAME"_zip.sh
-
-echo "-----------------------------"
-echo "Finished. All data are in $LIVEKITDATA"
-#echo "To build ISO, run: $TARGET/gen_"$LIVEKITNAME"_iso.sh"
-#echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
-cd $CHANGEDIR
 
 
 # Export build and install bootfiles
@@ -233,8 +161,6 @@ cd /mnt/sys_files/$LIVEKITNAME/boot
 # copy the bootfiles to the USB boot partition
 echo "Copie des fichiers de boot dans ${USBDEV}1..."
 cp -r /mnt/sys_files/EFI /mnt/boot
-cd $CHANGEDIR
-
 
 # Clean All
 #
@@ -258,12 +184,12 @@ done
 # close cryptsetup encrypted partition
 cryptsetup close encrypted
 # reset the tabs configurations
-crontab -u root utils/temp_cron.bak
-rm utils/temp_cron
-rm utils/temp_cron.bak
+crontab -u root /a/temp_cron.bak
+rm /a/temp_cron
+rm /a/temp_cron.bak
 # reset the cryptab
-cp utils/temp_crypttab.bak /etc/crypttab 
-rm utils/temp_crypttab.bak
+cp /a/temp_crypttab.bak /etc/crypttab 
+rm /a/temp_crypttab.bak
 
 echo "Terminé !"
 echo "-----------------------------"
