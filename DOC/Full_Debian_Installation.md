@@ -33,12 +33,10 @@ Follow the steps below to install Debian:
 - Set the user password
 
 - Select _"Guided - use entire disk and set up encrypted LVM"_ for partitioning
-
-![1685877546296](image/Installation_Complète/1685877546296.png)
+  ![1685877546296](image/Installation_Complète/1685877546296.png)
 
 - Select _"All files in one partition"_
-
-![1685877597007](image/Installation_Complète/1685877597007.png)
+  ![1685877597007](image/Installation_Complète/1685877597007.png)
 
 _It should look like this:_
 ![1685877616132](image/Installation_Complète/1685877616132.png)
